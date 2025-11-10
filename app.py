@@ -28,8 +28,13 @@ st.set_page_config(
 # (ดึง config ทั้งก้อน จาก Secrets)
 config = st.secrets["MY_YAML_CONFIG"]
 
+# [แก้ไข!] คัดลอก credentials จาก "ตู้เซฟ (read-only)"
+# มาเป็น "dict ธรรมดา (writable)"
+# เพราะ authenticator พยายามจะ "แก้ไข" credentials
+credentials_copy = dict(config['credentials'])
+
 authenticator = stauth.Authenticate(
-    config['credentials'],
+    credentials_copy, # <--- [แก้!] ส่ง "สำเนา" ที่แก้ไขได้เข้าไปแทน
     config['cookies']['cookie_name'],
     config['cookies']['cookie_key'],
     config['cookies']['cookie_expiry_days']
