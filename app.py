@@ -22,27 +22,35 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. [ใหม่!] ระบบล็อกอิน (อ่านจาก Secrets - เวอร์ชันเรียบง่าย) ---
+# --- 2. [ใหม่!] ระบบล็อกอิน (อ่านจาก Secrets - แก้ไข RecursionError) ---
 
-# 1. ดึง credentials ที่เรา "flatten" ไว้ (จาก Secrets)
-credentials_from_secrets = st.secrets["credentials"]
+# 1. [สำคัญ!] "แปลงร่าง" st.secrets เป็น dict ธรรมดา
+# เราต้องสร้าง dict ใหม่ทั้งหมด (Deep Copy) ด้วยมือ
+# เพื่อ "ตัดขาด" จาก st.secrets (ที่ห้ามเขียน)
+credentials_plain_dict = {
+    "usernames": {
+        # วนลูป user ทุกคนใน secrets
+        username: {
+            # วนลูป key/value (email, name, password) ของ user
+            key: value
+            for key, value in st.secrets["credentials"]["usernames"][username].items()
+        }
+        for username in st.secrets["credentials"]["usernames"]
+    }
+}
 
-# 2. [สำคัญ!] แปลง "Secrets object" ให้เป็น "Python dict" ธรรมดา
-# โดยใช้ dict() ก่อนที่จะ 'deepcopy'
-credentials_plain_dict = dict(credentials_from_secrets)
-
-# 3. สร้าง "config" ที่เหลือ (cookies) ขึ้นมาเองในโค้ด
+# 2. สร้าง "config" ที่เหลือ (cookies) ขึ้นมาเองในโค้ด
 config = {
     'cookies': {
         'cookie_name': "monny_tracker_cookie",
-        'cookie_key': "abcdef123456",
+        'cookie_key': "abcdef123456",  # (คีย์นี้ไม่สำคัญมาก)
         'cookie_expiry_days': 30
     },
-    'credentials': credentials_plain_dict # (ใส่ dict ธรรมดา)
+    'credentials': credentials_plain_dict  # (ใส่ dict ธรรมดา)
 }
 
 # 3. [แก้!] คัดลอก credentials แบบ "Deep Copy"
-# เพื่อป้องกัน Error 'Secrets does not support item assignment'
+# (ตอนนี้มันจะทำงานได้ เพราะ config['credentials'] เป็น dict ธรรมดาแล้ว)
 credentials_copy = copy.deepcopy(config['credentials'])
 
 authenticator = stauth.Authenticate(
