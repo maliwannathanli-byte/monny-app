@@ -25,16 +25,20 @@ st.set_page_config(
 # --- 2. [ใหม่!] ระบบล็อกอิน (อ่านจาก Secrets - เวอร์ชันเรียบง่าย) ---
 
 # 1. ดึง credentials ที่เรา "flatten" ไว้ (จาก Secrets)
-credentials = st.secrets["credentials"]
+credentials_from_secrets = st.secrets["credentials"]
 
-# 2. สร้าง "config" ที่เหลือ (cookies) ขึ้นมาเองในโค้ด
+# 2. [สำคัญ!] แปลง "Secrets object" ให้เป็น "Python dict" ธรรมดา
+# โดยใช้ dict() ก่อนที่จะ 'deepcopy'
+credentials_plain_dict = dict(credentials_from_secrets)
+
+# 3. สร้าง "config" ที่เหลือ (cookies) ขึ้นมาเองในโค้ด
 config = {
     'cookies': {
         'cookie_name': "monny_tracker_cookie",
-        'cookie_key': "abcdef123456",  # (คีย์นี้ไม่สำคัญมาก)
+        'cookie_key': "abcdef123456",
         'cookie_expiry_days': 30
     },
-    'credentials': credentials  # (ใส่ credentials ที่ดึงมา)
+    'credentials': credentials_plain_dict # (ใส่ dict ธรรมดา)
 }
 
 # 3. [แก้!] คัดลอก credentials แบบ "Deep Copy"
