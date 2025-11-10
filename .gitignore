@@ -1,0 +1,12 @@
+# Python virtual environment
+.venv/
+venv/
+__pycache__/
+
+# ไฟล์ความลับ (ห้ามอัป!)
+config.yaml
+
+# ไฟล์ฐานข้อมูลเก่า (ห้ามอัป!)
+monny_data.db
+*.db
+*.db-journal
