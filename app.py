@@ -6,13 +6,28 @@ from yaml.loader import SafeLoader
 import streamlit_authenticator as stauth
 import copy  # <--- [สำคัญ!] Import copy สำหรับ deepcopy
 
-# --- [ใหม่!] Import และเชื่อมต่อ Database (อ่านจาก Secrets) ---
+# --- [ใหม่! & แก้ไข!] Import และเชื่อมต่อ Database (อ่านจาก Secrets) ---
 import database as db
 
-# (ดึง Connection String จาก Secrets)
-db_conn_string = st.secrets["SUPABASE_CONN_STRING"]
-conn = db.create_connection(db_conn_string)
+@st.cache_resource
+def get_db_connection():
+    """
+    สร้างและ Cache การเชื่อมต่อฐานข้อมูล
+    จะทำงานแค่ครั้งเดียว และครั้งต่อๆ ไปจะดึงจาก Cache
+    """
+    conn_str = st.secrets["SUPABASE_CONN_STRING"]
+    conn = db.create_connection(conn_str)
+    return conn
+
+# เรียกใช้ฟังก์ชันที่ Cache ไว้
+conn = get_db_connection()
+
+# [แก้ไข!] ตรวจสอบ connection ทันที
+if conn is None:
+    st.error("ไม่สามารถเชื่อมต่อฐานข้อมูลได้! กรุณาตรวจสอบ 'SUPABASE_CONN_STRING' ใน Secrets")
+    st.stop() # หยุดการทำงานทันที
 # ------------------------------------
+
 
 # --- 1. ตั้งค่าหน้าเว็บ (เหมือนเดิม) ---
 st.set_page_config(
