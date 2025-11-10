@@ -5,14 +5,17 @@ import yaml
 from yaml.loader import SafeLoader
 import streamlit_authenticator as stauth
 
-# --- [ใหม่!] Import และเชื่อมต่อ Database ---
+# --- [ใหม่!] Import และเชื่อมต่อ Database (อ่านจาก Secrets) ---
 import database as db
 
-conn = db.create_connection()
-db.create_tables(conn)
+# (ดึง Connection String จาก Secrets)
+# นี่คือบรรทัดที่แก้ Error ล่าสุดของคุณ (ต้องส่ง conn_string เข้าไป)
+db_conn_string = st.secrets["SUPABASE_CONN_STRING"]
+conn = db.create_connection(db_conn_string)
+# (เราลบ db.create_tables(conn) ทิ้ง เพราะเราสร้างเองแล้ว)
 # ------------------------------------
 
-# --- 1. ตั้งค่าหน้าเว็บ ---
+# --- 1. ตั้งค่าหน้าเว็บ (เหมือนเดิม) ---
 st.set_page_config(
     page_title="บันทึกรายรับรายจ่าย",
     page_icon="💸",
@@ -20,27 +23,27 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. ระบบล็อกอิน ---
-with open('config.yaml', encoding='utf-8') as file:  # (แก้ Encoding แล้ว)
-    config = yaml.load(file, Loader=SafeLoader)
+# --- 2. [ใหม่!] ระบบล็อกอิน (อ่านจาก Secrets) ---
+
+# (ดึง config ทั้งก้อน จาก Secrets)
+config = st.secrets["MY_YAML_CONFIG"]
 
 authenticator = stauth.Authenticate(
     config['credentials'],
     config['cookies']['cookie_name'],
     config['cookies']['cookie_key'],
     config['cookies']['cookie_expiry_days']
-    # (ลบ preauthorized ออกแล้ว)
 )
 
 # [ใหม่!] สร้างหน้าล็อกอิน
 authenticator.login('main')
 
 # [แก้!] ดึงค่าจาก st.session_state (API ใหม่ล่าสุด)
-name = st.session_state["name"]
-authentication_status = st.session_state["authentication_status"]
-username = st.session_state["username"]
+name = st.session_state.get("name")
+authentication_status = st.session_state.get("authentication_status")
+username = st.session_state.get("username")
 
-# --- 3. ตรวจสอบการล็อกอิน ---
+# --- 3. [ใหม่!] ตรวจสอบการล็อกอิน ---
 if authentication_status is False:
     st.error('Username/password ไม่ถูกต้อง')
 elif authentication_status is None:
@@ -49,14 +52,14 @@ elif authentication_status:
     # ========= [ แอปของคุณเริ่มต้นตรงนี้! ] =========
 
     # --- หัวข้อหลัก ---
-    st.markdown("<h1 style='text_align: center; color: #8A2BE2;'>💸 บันทึกรายรับรายจ่าย 💸</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #8A2BE2;'>💸 บันทึกรายรับรายจ่าย 💸</h1>", unsafe_allow_html=True)
 
-    # [ย้ายแล้ว!] authenticator.logout('ออกจากระบบ', 'main')
-    # [ย้ายแล้ว!] st.write(f'ยินดีต้อนรับ, *{name}*')
+    # (ย้ายปุ่ม Logout/Welcome ไปไว้ล่างสุด)
 
     # --- 4. [แก้!] ส่วนเลือกบัญชี (ดึงจาก DB) ---
     st.header("เลือกบัญชี 📂")
 
+    # [แก้!] ดึงบัญชีเฉพาะของ user คนนี้ จาก DB
     user_accounts_dict = db.get_user_accounts(conn, username)
     account_names = list(user_accounts_dict.keys())
 
@@ -66,6 +69,7 @@ elif authentication_status:
         current_account_data = None
         CURRENT_THEME_COLOR = "#8A2BE2"
     else:
+        # (ใช้ st.session_state ชั่วคราว เพื่อ 'จำ' ว่าเลือกอันไหนไว้)
         if 'selected_account' not in st.session_state or st.session_state.selected_account not in account_names:
             st.session_state.selected_account = account_names[0]
 
@@ -77,11 +81,12 @@ elif authentication_status:
         )
         st.session_state.selected_account = selected
 
+        # [แก้!] ดึงข้อมูลบัญชี (รวม ID ที่มาจาก DB)
         current_account_data = user_accounts_dict[st.session_state.selected_account]
         CURRENT_THEME_COLOR = current_account_data['theme_color']
-        CURRENT_ACCOUNT_ID = current_account_data['id']
+        CURRENT_ACCOUNT_ID = current_account_data['id']  # <-- [สำคัญ!] ID ของบัญชีนี้
 
-        # --- 5. ฉีด CSS (เหมือนเดิม) ---
+    # --- 5. ฉีด CSS (เหมือนเดิม) ---
     st.markdown(
         f"""
         <style>
@@ -95,7 +100,6 @@ elif authentication_status:
     )
 
     # --- 6. [แก้!] ส่วนรับข้อมูล (บันทึกลง DB) ---
-    # (จะแสดงเมื่อมี current_account_data)
     if current_account_data:
         with st.form(key="expense_form", clear_on_submit=True):
             st.markdown("**ประเภท:**")
@@ -134,7 +138,7 @@ elif authentication_status:
         else:
             df = pd.DataFrame(transactions_list)
             df_display = df.copy()
-            df_display["tx_datetime"] = pd.to_datetime(df_display["tx_datetime"])
+            # (แปลง datetime object จาก DB กลับเป็น string สวยๆ)
             df_display["tx_datetime"] = df_display["tx_datetime"].apply(lambda x: x.strftime("%d/%m/%Y %H:%M:%S"))
 
             df_display = df_display.rename(columns={
@@ -150,7 +154,7 @@ elif authentication_status:
     if current_account_data:
         st.header(f"สรุปยอด ({st.session_state.selected_account}) 📊")
 
-        # (ใช้ transactions_list จากข้อ 7 ได้)
+        # (เรายังใช้ transactions_list จากข้อ 7 ได้)
         if not transactions_list:
             df = pd.DataFrame(columns=["tx_type", "amount"])
         else:
@@ -160,7 +164,9 @@ elif authentication_status:
 
         total_income = df[df["ประเภท"] == "รายรับ 🔺"]["จำนวนเงิน"].sum()
         total_expense = df[df["ประเภท"] == "รายจ่าย 🔻"]["จำนวนเงิน"].sum()
-        starting_balance = current_account_data['starting_balance']
+
+        # (ต้องแปลง 'starting_balance' จาก DB (Decimal) เป็น float)
+        starting_balance = float(current_account_data['starting_balance'])
         total_balance = starting_balance + total_income + total_expense
 
         st.metric("ยอดรับ 🔺", f"฿{total_income:,.2f}")
@@ -176,16 +182,16 @@ elif authentication_status:
 
                 options = []
                 for tx in transactions_list:
-                    dt_obj = datetime.datetime.strptime(tx['tx_datetime'], '%Y-%m-%d %H:%M:%S.%f')
+                    # (tx['tx_datetime'] เป็น datetime object อยู่แล้ว)
                     options.append(
-                        f"{tx['id']}: {dt_obj.strftime('%d/%m %H:%M')} - {tx['tx_name']} ({tx['amount']:.2f} ฿)")
+                        f"{tx['id']}: {tx['tx_datetime'].strftime('%d/%m %H:%M')} - {tx['tx_name']} ({float(tx['amount']):.2f} ฿)")
 
                 selected_tx_str = st.selectbox("เลือกรายการที่จะจัดการ:", options)
 
                 if selected_tx_str:
                     selected_id = int(selected_tx_str.split(':')[0])
                     tx_data = next(item for item in transactions_list if item["id"] == selected_id)
-                    tx_datetime_obj = datetime.datetime.strptime(tx_data['tx_datetime'], '%Y-%m-%d %H:%M:%S.%f')
+                    tx_datetime_obj = tx_data['tx_datetime']
 
                     st.markdown("---")
                     st.markdown(f"**กำลังแก้ไข:** {tx_data['tx_name']}")
@@ -196,7 +202,7 @@ elif authentication_status:
                         type_index = 0 if tx_data['tx_type'] == 'รายรับ 🔺' else 1
                         edit_type = st.radio("ประเภท:", ["รายรับ 🔺", "รายจ่าย 🔻"], index=type_index, horizontal=True)
                         edit_name = st.text_input("รายการ:", value=tx_data['tx_name'])
-                        edit_amount_str = st.text_input("จำนวนเงิน:", value=f"{abs(tx_data['amount']):.2f}")
+                        edit_amount_str = st.text_input("จำนวนเงิน:", value=f"{abs(float(tx_data['amount'])):.2f}")
 
                         save_button = st.form_submit_button("💾 บันทึกการแก้ไข")
 
@@ -246,14 +252,14 @@ elif authentication_status:
 
         inc = df[df["ประเภท"] == "รายรับ 🔺"]["จำนวนเงิน"].sum()
         exp = df[df["ประเภท"] == "รายจ่าย 🔻"]["จำนวนเงิน"].sum()
-        account_balance = data['starting_balance'] + inc + exp
+        account_balance = float(data['starting_balance']) + inc + exp
 
         all_balances.append({"บัญชี": account_name, "ยอดคงเหลือ": account_balance})
         overall_net_worth += account_balance
 
     st.dataframe(pd.DataFrame(all_balances), use_container_width=True, hide_index=True)
     st.markdown(
-        f"<h2 style='text-align: center; color: #8A2BE2;'>...ยอดรวมสุทธิ (ทุกบัญชี): ฿{overall_net_worth:.2f}</h2>",
+        f"<h2 style='text-align: center; color: #8A2BE2;'>...ยอดรวมสุทธิ (ทุกบัญชี): ฿{overall_net_worth:,.2f}</h2>",
         unsafe_allow_html=True)
 
     # --- 10. [แก้!] ส่วนจัดการบัญชี (ทำงานกับ DB) ---
@@ -275,11 +281,11 @@ elif authentication_status:
     if current_account_data:
         st.subheader(f"แก้ไข: {st.session_state.selected_account}")
 
+        current_start_balance = float(current_account_data['starting_balance'])
         start_balance_str = st.text_input(
             f"ยอดเริ่มต้น ({st.session_state.selected_account}):",
             placeholder="0.00",
-            value=f"{current_account_data['starting_balance']:.2f}" if current_account_data[
-                                                                           'starting_balance'] != 0.0 else ""
+            value=f"{current_start_balance:.2f}" if current_start_balance != 0.0 else ""
         )
         new_color = st.color_picker(
             "เลือกสีธีมสำหรับบัญชีนี้",
