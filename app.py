@@ -4,15 +4,14 @@ import datetime
 import yaml
 from yaml.loader import SafeLoader
 import streamlit_authenticator as stauth
+import copy  # <--- [สำคัญ!] Import copy สำหรับ deepcopy
 
 # --- [ใหม่!] Import และเชื่อมต่อ Database (อ่านจาก Secrets) ---
 import database as db
 
 # (ดึง Connection String จาก Secrets)
-# นี่คือบรรทัดที่แก้ Error ล่าสุดของคุณ (ต้องส่ง conn_string เข้าไป)
 db_conn_string = st.secrets["SUPABASE_CONN_STRING"]
 conn = db.create_connection(db_conn_string)
-# (เราลบ db.create_tables(conn) ทิ้ง เพราะเราสร้างเองแล้ว)
 # ------------------------------------
 
 # --- 1. ตั้งค่าหน้าเว็บ (เหมือนเดิม) ---
@@ -23,18 +22,27 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. [ใหม่!] ระบบล็อกอิน (อ่านจาก Secrets) ---
+# --- 2. [ใหม่!] ระบบล็อกอิน (อ่านจาก Secrets - เวอร์ชันเรียบง่าย) ---
 
-# (ดึง config ทั้งก้อน จาก Secrets)
-config = st.secrets["MY_YAML_CONFIG"]
+# 1. ดึง credentials ที่เรา "flatten" ไว้ (จาก Secrets)
+credentials = st.secrets["credentials"]
 
-# [แก้ไข!] คัดลอก credentials จาก "ตู้เซฟ (read-only)"
-# มาเป็น "dict ธรรมดา (writable)"
-# เพราะ authenticator พยายามจะ "แก้ไข" credentials
-credentials_copy = dict(config['credentials'])
+# 2. สร้าง "config" ที่เหลือ (cookies) ขึ้นมาเองในโค้ด
+config = {
+    'cookies': {
+        'cookie_name': "monny_tracker_cookie",
+        'cookie_key': "abcdef123456",  # (คีย์นี้ไม่สำคัญมาก)
+        'cookie_expiry_days': 30
+    },
+    'credentials': credentials  # (ใส่ credentials ที่ดึงมา)
+}
+
+# 3. [แก้!] คัดลอก credentials แบบ "Deep Copy"
+# เพื่อป้องกัน Error 'Secrets does not support item assignment'
+credentials_copy = copy.deepcopy(config['credentials'])
 
 authenticator = stauth.Authenticate(
-    credentials_copy, # <--- [แก้!] ส่ง "สำเนา" ที่แก้ไขได้เข้าไปแทน
+    credentials_copy,  # <--- ส่ง "สำเนา" ที่แก้ไขได้เข้าไป
     config['cookies']['cookie_name'],
     config['cookies']['cookie_key'],
     config['cookies']['cookie_expiry_days']
@@ -59,12 +67,9 @@ elif authentication_status:
     # --- หัวข้อหลัก ---
     st.markdown("<h1 style='text-align: center; color: #8A2BE2;'>💸 บันทึกรายรับรายจ่าย 💸</h1>", unsafe_allow_html=True)
 
-    # (ย้ายปุ่ม Logout/Welcome ไปไว้ล่างสุด)
-
     # --- 4. [แก้!] ส่วนเลือกบัญชี (ดึงจาก DB) ---
     st.header("เลือกบัญชี 📂")
 
-    # [แก้!] ดึงบัญชีเฉพาะของ user คนนี้ จาก DB
     user_accounts_dict = db.get_user_accounts(conn, username)
     account_names = list(user_accounts_dict.keys())
 
@@ -74,7 +79,6 @@ elif authentication_status:
         current_account_data = None
         CURRENT_THEME_COLOR = "#8A2BE2"
     else:
-        # (ใช้ st.session_state ชั่วคราว เพื่อ 'จำ' ว่าเลือกอันไหนไว้)
         if 'selected_account' not in st.session_state or st.session_state.selected_account not in account_names:
             st.session_state.selected_account = account_names[0]
 
@@ -86,12 +90,11 @@ elif authentication_status:
         )
         st.session_state.selected_account = selected
 
-        # [แก้!] ดึงข้อมูลบัญชี (รวม ID ที่มาจาก DB)
         current_account_data = user_accounts_dict[st.session_state.selected_account]
         CURRENT_THEME_COLOR = current_account_data['theme_color']
-        CURRENT_ACCOUNT_ID = current_account_data['id']  # <-- [สำคัญ!] ID ของบัญชีนี้
+        CURRENT_ACCOUNT_ID = current_account_data['id']
 
-    # --- 5. ฉีด CSS (เหมือนเดิม) ---
+        # --- 5. ฉีด CSS (เหมือนเดิม) ---
     st.markdown(
         f"""
         <style>
@@ -143,7 +146,6 @@ elif authentication_status:
         else:
             df = pd.DataFrame(transactions_list)
             df_display = df.copy()
-            # (แปลง datetime object จาก DB กลับเป็น string สวยๆ)
             df_display["tx_datetime"] = df_display["tx_datetime"].apply(lambda x: x.strftime("%d/%m/%Y %H:%M:%S"))
 
             df_display = df_display.rename(columns={
@@ -159,7 +161,6 @@ elif authentication_status:
     if current_account_data:
         st.header(f"สรุปยอด ({st.session_state.selected_account}) 📊")
 
-        # (เรายังใช้ transactions_list จากข้อ 7 ได้)
         if not transactions_list:
             df = pd.DataFrame(columns=["tx_type", "amount"])
         else:
@@ -170,7 +171,6 @@ elif authentication_status:
         total_income = df[df["ประเภท"] == "รายรับ 🔺"]["จำนวนเงิน"].sum()
         total_expense = df[df["ประเภท"] == "รายจ่าย 🔻"]["จำนวนเงิน"].sum()
 
-        # (ต้องแปลง 'starting_balance' จาก DB (Decimal) เป็น float)
         starting_balance = float(current_account_data['starting_balance'])
         total_balance = starting_balance + total_income + total_expense
 
@@ -180,14 +180,12 @@ elif authentication_status:
         st.markdown(f"<h2 class='summary-balance'>ยอดคงเหลือ (บัญชีนี้): ฿{total_balance:.2f}</h2>",
                     unsafe_allow_html=True)
 
-        # (ส่วนแก้ไข/ลบ รายการ)
         if transactions_list:
             st.subheader("แก้ไข / ลบ รายการ ✏️")
             with st.expander("คลิกเพื่อจัดการรายการที่มีอยู่"):
 
                 options = []
                 for tx in transactions_list:
-                    # (tx['tx_datetime'] เป็น datetime object อยู่แล้ว)
                     options.append(
                         f"{tx['id']}: {tx['tx_datetime'].strftime('%d/%m %H:%M')} - {tx['tx_name']} ({float(tx['amount']):.2f} ฿)")
 
